@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruby Focus - Global Challenge</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #map {
+            flex-grow: 1;
+        }
+        #input-container {
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        input, button, select {
+            margin: 5px;
+            padding: 5px;
+        }
+        #challenge-info {
+            padding: 10px;
+            background-color: #e0e0e0;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="challenge-info">
+        Today's Global Challenge: <span id="challenge-text"></span>
+    </div>
+    <div id="input-container">
+        <input type="text" id="username" placeholder="Username (optional)">
+        <input type="text" id="focus" placeholder="I am focused on...">
+        <select id="challenge-select">
+            <option value="">Select Challenge (optional)</option>
+            <option value="productivity">Productivity Monday</option>
+            <option value="learning">Learning Something New Wednesday</option>
+            <option value="health">Healthy Habits Friday</option>
+        </select>
+        <button onclick="submitFocus()">Submit</button>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        let map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        let markers = {};
+        let challenges = {
+            'productivity': 'Productivity Monday',
+            'learning': 'Learning Something New Wednesday',
+            'health': 'Healthy Habits Friday'
+        };
+
+        function setDailyChallenge() {
+            let day = new Date().getDay();
+            let challengeText = document.getElementById('challenge-text');
+            switch(day) {
+                case 1: // Monday
+                    challengeText.textContent = challenges.productivity;
+                    break;
+                case 3: // Wednesday
+                    challengeText.textContent = challenges.learning;
+                    break;
+                case 5: // Friday
+                    challengeText.textContent = challenges.health;
+                    break;
+                default:
+                    challengeText.textContent = "Free Focus Day";
+            }
+        }
+
+        setDailyChallenge();
+
+        function generatePun(city) {
+            const puns = {
+                'New York': 'New Focus City',
+                'Los Angeles': 'Los Focused',
+                'Chicago': 'Chicagocus',
+                'Houston': 'Focuston',
+                'Phoenix': 'Phoenocus',
+                'Philadelphia': 'Philadelfocus',
+                'San Antonio': 'San Focusio',
+                'San Diego': 'San Diegocus',
+                'Dallas': 'Focuslas',
+                'San Jose': 'San Focus'
+            };
+            return puns[city] || `${city} Focus`;
+        }
+
+        function submitFocus() {
+            let focus = document.getElementById('focus').value;
+            let username = document.getElementById('username').value;
+            let challenge = document.getElementById('challenge-select').value;
+
+            if (!focus) {
+                alert('Please enter what you are focused on.');
+                return;
+            }
+
+            fetch('https://ipapi.co/json/')
+                .then(response => response.json())
+                .then(data => {
+                    username = username || generatePun(data.city);
+                    let lat = data.latitude;
+                    let lon = data.longitude;
+
+                    if (markers[username]) {
+                        map.removeLayer(markers[username]);
+                    }
+
+                    let markerColor = challenge ? 'red' : 'blue';
+                    let marker = L.marker([lat, lon], {icon: L.divIcon({className: 'custom-div-icon', html: `<div style='background-color:${markerColor};' class='marker-pin'></div><i class='my-div-icon'></i>`, iconSize: [30, 42], iconAnchor: [15, 42]})}).addTo(map);
+                    let popupContent = `<b>${username}</b><br>${focus}<br>Just now`;
+                    if (challenge) {
+                        popupContent += `<br>Participating in: ${challenges[challenge]}`;
+                    }
+                    marker.bindPopup(popupContent).openPopup();
+                    markers[username] = marker;
+
+                    localStorage.setItem(username, JSON.stringify({
+                        focus: focus,
+                        lat: lat,
+                        lon: lon,
+                        timestamp: Date.now(),
+                        challenge: challenge
+                    }));
+
+                    // Viral sharing prompt
+                    if (confirm('Great job focusing! Want to challenge your friends?')) {
+                        let shareText = `I'm focusing on "${focus}" with Ruby Focus! Join me: [Your App URL]`;
+                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, '_blank');
+                    }
+                });
+        }
+
+        function loadSavedFocuses() {
+            for (let i = 0; i < localStorage.length; i++) {
+                let username = localStorage.key(i);
+                let data = JSON.parse(localStorage.getItem(username));
+                
+                if (Date.now() - data.timestamp > 24 * 60 * 60 * 1000) {
+                    localStorage.removeItem(username);
+                    continue;
+                }
+
+                let markerColor = data.challenge ? 'red' : 'blue';
+                let marker = L.marker([data.lat, data.lon], {icon: L.divIcon({className: 'custom-div-icon', html: `<div style='background-color:${markerColor};' class='marker-pin'></div><i class='my-div-icon'></i>`, iconSize: [30, 42], iconAnchor: [15, 42]})}).addTo(map);
+                let timeDiff = Math.round((Date.now() - data.timestamp) / (60 * 1000));
+                let popupContent = `<b>${username}</b><br>${data.focus}<br>${timeDiff} min ago`;
+                if (data.challenge) {
+                    popupContent += `<br>Participating in: ${challenges[data.challenge]}`;
+                }
+                marker.bindPopup(popupContent);
+                markers[username] = marker;
+            }
+        }
+
+        loadSavedFocuses();
+
+        setInterval(() => {
+            for (let username in markers) {
+                let data = JSON.parse(localStorage.getItem(username));
+                if (data) {
+                    let timeDiff = Math.round((Date.now() - data.timestamp) / (60 * 1000));
+                    let popupContent = `<b>${username}</b><br>${data.focus}<br>${timeDiff} min ago`;
+                    if (data.challenge) {
+                        popupContent += `<br>Participating in: ${challenges[data.challenge]}`;
+                    }
+                    markers[username].setPopupContent(popupContent);
+                }
+            }
+        }, 60000);  // Update every minute
+    </script>
+</body>
+</html>
